@@ -7,15 +7,17 @@
 % Configuration variables (***TO BE COMPLETED***)
 nspk = 16;       % Number of speakers  
 fs = 16000;         % Sampling frequency
-ncomp = 20;      % Numero de componentes MFCC
-wst = 0.02;        % Window size (seconds)
-fpt = 0.01;        % Frame period (seconds) 
+wst = 0.03;        % Window size (seconds)
+fpt = 0.015;        % Frame period (seconds) 
 ws = wst*fs;         % Window size (samples)
 fp = fpt*fs;         % Frame period (samples)
-n_gauss = 8;     % Number of gaussians in the GMM models
+ngauss = 8;     % Number of gaussians in the GMM models
 
 % Other configuration variables
 nbands = 40;   % Number of filters in the filterbank
+numcep = 20;
+options = statset('MaxIter',500);
+frequency_warp = ["mel","bark","htkmel","fcmel"];
 
 % Lists of training and testing speech files
 nomlist_train = 'list_train.txt';
@@ -30,6 +32,21 @@ sr = 16000;
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+val_gauss=zeros(1,2);
+for i=1:10
+    x=Calc(nspk,fs,wst,fpt,ws,fp,i,nbands,numcep,options,frequency_warp,nomlist_train,nomlist_test,sr)
+    val_gauss(i,:)=x;
+end
+
+val_cep=zeros(1,2);
+for i=1:25
+    x=Calc(nspk,fs,wst,fpt,ws,fp,7,nbands,i,options,frequency_warp,nomlist_train,nomlist_test,sr)
+    val_cep(i,:)=x;
+end
+
+
+function accuracy=Calc(nspk,fs,wst,fpt,ws,fp,ngauss,nbands,numcep,options,frequency_warp,nomlist_train,nomlist_test,sr)
 % Speaker GMM models building
 for i=1:nspk
     
@@ -38,20 +55,15 @@ for i=1:nspk
     x=load_train_data(nomlist_train,i);
         
     % Feature extraction
-    x_melfcc=melfcc(x,sr);
-    x_processed=transpose(x_melfcc);
+    [cepstra,aspectrum,pspectrum]=melfcc(x,sr,'numcep',numcep,'wintime',wst, 'hoptime',fpt,'nbands',nbands,'fbtype',frequency_warp(1));
+    x_processed=transpose(cepstra);
     %(***TO BE COMPLETED***)
     
     % Speaker GMM models building for speaker "i"
-    options = statset('MaxIter',500);
-    x_glm{i}=fitgmdist(x_processed,n_gauss,'CovarianceType','diagonal','Options',options);
+    x_glm{i}=fitgmdist(x_processed,ngauss,'CovarianceType','diagonal','Options',options);
     
+    clearvars x_processed
 end  % for i=1:nspk
-
-
-    %val=pdf(x_glm{i},x_processed);  
-    %val=log(val);
-    %val=sum(val)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -60,6 +72,8 @@ end  % for i=1:nspk
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Speaker identification process
+
+accuracy = zeros(2,1);
 for t=1:size(nomlist_test,2)
        
    % Reading of the list containing the speech test files 
@@ -74,7 +88,7 @@ for t=1:size(nomlist_test,2)
    actual_spk = int16(info_test{2});   % speaker label of each test file
    fclose(fid);
    fcst_spk = int16(length(info_test{1}));
-   accuracy = 0;
+   
 
    % Loop for each test file
    for k=1:nfiles_test
@@ -87,14 +101,14 @@ for t=1:size(nomlist_test,2)
 
       % Feature extraction
       %(***TO BE COMPLETED***)
-      x_melfcc=melfcc(x,sr);
-      x_processed=transpose(x_melfcc);
+      [cepstra,aspectrum,pspectrum]=melfcc(x,sr,'numcep',numcep,'wintime',wst, 'hoptime',fpt,'nbands',nbands);
+      x_processed=transpose(cepstra);
 
       % Log-likelihood computation of each model for the current test file
       %(***TO BE COMPLETED***)
       res = zeros(nspk,1);
       for i=1:nspk
-          res(i)=sum(log(pdf(x_glm{i},x_processed)));       
+          res(i)=sum(log(pdf(x_glm{i},x_processed)));        
       end
       
       % Selection of the identified speaker
@@ -106,8 +120,12 @@ for t=1:size(nomlist_test,2)
    % Computation of the identification accuracy
    %(***TO BE COMPLETED***)
    cnfMatrix= confusionmat(actual_spk,fcst_spk); 
-   accuracy = 100*sum(diag(cnfMatrix))/sum(cnfMatrix(:))  
+   accuracy(t) = sum(diag(cnfMatrix))/sum(cnfMatrix(:));  
 end % t=1:size(nomlist_test,2),
+end
+
+
+
    
 
 
